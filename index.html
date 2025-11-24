@@ -268,10 +268,15 @@
         
         .chart-container {
             background: white;
-            padding: 20px;
+            padding: 15px;
             border-radius: 12px;
             margin-bottom: 20px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .chart-container h2 {
+            margin-top: 0;
+            margin-bottom: 10px;
         }
         
         .export-btn, .import-btn {
@@ -411,7 +416,10 @@
             </div>
             
             <div class="chart-container">
-                <h2>Feed Durations by Day</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Feed Durations by Day</h2>
+                    <span id="feed-avg-display" style="font-size: 18px; font-weight: bold; color: #ef4444;">Avg: -- min</span>
+                </div>
                 <canvas id="feedDurationByDayChart"></canvas>
             </div>
             
@@ -754,39 +762,77 @@
             const labels = [];
             const data = [];
             const colors = [];
+            const dayPositions = []; // Track where each day's bars are
             
+            let currentIndex = 0;
             sortedDays.forEach((day, dayIndex) => {
                 const dayFeeds = feedsByDay[day];
                 const dayColor = dayColors[dayIndex % dayColors.length];
+                const startIndex = currentIndex;
                 
                 dayFeeds.forEach((feed, feedIndex) => {
-                    // Format as YYYY-MM-DD for the label
-                    labels.push(day);
+                    labels.push(''); // Empty labels, we'll draw custom ones
                     data.push(feed.duration);
                     colors.push(dayColor);
+                    currentIndex++;
+                });
+                
+                // Store the center position for this day
+                const endIndex = currentIndex - 1;
+                const centerPosition = (startIndex + endIndex) / 2;
+                dayPositions.push({
+                    center: centerPosition,
+                    label: formatDateShort(day)
                 });
             });
+            
+            // Calculate moving average (simple average of all feeds)
+            const overallAverage = data.length > 0 ? data.reduce((a, b) => a + b, 0) / data.length : 0;
+            const avgLine = new Array(data.length).fill(overallAverage);
+            
+            // Update the average display
+            document.getElementById('feed-avg-display').textContent = 
+                `Avg: ${Math.round(overallAverage)} min`;
             
             window.feedDurationByDayChartInstance = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: labels.map(l => formatDateShort(l)),
+                    labels: labels,
                     datasets: [{
                         label: 'Feed Duration',
                         data: data,
                         backgroundColor: colors,
                         borderColor: colors.map(c => c),
-                        borderWidth: 1
+                        borderWidth: 1,
+                        order: 2
+                    }, {
+                        label: 'Average',
+                        data: avgLine,
+                        type: 'line',
+                        borderColor: '#ef4444',
+                        borderWidth: 3,
+                        borderDash: [5, 5],
+                        pointRadius: 0,
+                        fill: false,
+                        order: 1
                     }]
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: true,
+                    layout: {
+                        padding: {
+                            top: 10,
+                            right: 10,
+                            bottom: 10,
+                            left: 10
+                        }
+                    },
                     scales: {
                         x: { 
                             title: { display: true, text: 'Date' },
                             ticks: {
-                                maxRotation: 45,
-                                minRotation: 45
+                                display: false // Hide default ticks, we'll draw custom ones
                             }
                         },
                         y: { 
@@ -796,11 +842,15 @@
                     },
                     plugins: {
                         legend: {
-                            display: false
+                            display: true,
+                            position: 'top'
                         },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
+                                    if (context.dataset.label === 'Average') {
+                                        return 'Average: ' + Math.round(context.parsed.y) + ' min';
+                                    }
                                     return 'Duration: ' + context.parsed.y + ' min';
                                 }
                             }
@@ -808,35 +858,26 @@
                     }
                 },
                 plugins: [{
-                    id: 'textInBars',
-                    afterDatasetsDraw: function(chart) {
+                    id: 'customXAxisLabels',
+                    afterDraw: function(chart) {
                         const ctx = chart.ctx;
-                        chart.data.datasets.forEach(function(dataset, i) {
-                            const meta = chart.getDatasetMeta(i);
-                            meta.data.forEach(function(bar, index) {
-                                const data = dataset.data[index];
-                                if (data > 0) {
-                                    // Choose text color based on bar height
-                                    // Smaller bars get white text for better contrast on blue
-                                    const barHeight = Math.abs(bar.height);
-                                    const useWhiteText = barHeight < 30;
-                                    ctx.fillStyle = useWhiteText ? '#ffffff' : '#000000';
-                                    
-                                    // Adjust font size based on bar height
-                                    let fontSize = 14;
-                                    if (barHeight < 25) fontSize = 10;
-                                    else if (barHeight < 35) fontSize = 12;
-                                    
-                                    ctx.font = `bold ${fontSize}px Arial`;
-                                    ctx.textAlign = 'center';
-                                    ctx.textBaseline = 'middle';
-                                    // Get bar position
-                                    const x = bar.x;
-                                    const y = bar.y + (bar.height / 2);
-                                    ctx.fillText(data + 'm', x, y);
-                                }
-                            });
+                        const xAxis = chart.scales.x;
+                        const yAxis = chart.scales.y;
+                        
+                        ctx.save();
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'top';
+                        ctx.fillStyle = '#666';
+                        ctx.font = '12px Arial';
+                        
+                        // Draw centered labels for each day
+                        dayPositions.forEach(function(dayPos) {
+                            const xPixel = xAxis.getPixelForValue(dayPos.center);
+                            const yPixel = yAxis.bottom + 10;
+                            ctx.fillText(dayPos.label, xPixel, yPixel);
                         });
+                        
+                        ctx.restore();
                     }
                 }]
             });
@@ -868,6 +909,15 @@
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: true,
+                    layout: {
+                        padding: {
+                            top: 10,
+                            right: 10,
+                            bottom: 10,
+                            left: 10
+                        }
+                    },
                     scales: {
                         x: { 
                             title: { display: true, text: 'Day' }
