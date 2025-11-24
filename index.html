@@ -822,17 +822,25 @@
                     maintainAspectRatio: true,
                     layout: {
                         padding: {
-                            top: 10,
-                            right: 10,
-                            bottom: 10,
-                            left: 10
+                            top: 5,
+                            right: 5,
+                            bottom: 5,
+                            left: 5
                         }
                     },
                     scales: {
                         x: { 
-                            title: { display: true, text: 'Date' },
+                            title: { 
+                                display: true, 
+                                text: 'Date',
+                                padding: { top: 20 }
+                            },
                             ticks: {
-                                display: false // Hide default ticks, we'll draw custom ones
+                                display: false, // Hide default ticks, we'll draw custom ones
+                                padding: 10
+                            },
+                            grid: {
+                                offset: true
                             }
                         },
                         y: { 
@@ -873,7 +881,7 @@
                         // Draw centered labels for each day
                         dayPositions.forEach(function(dayPos) {
                             const xPixel = xAxis.getPixelForValue(dayPos.center);
-                            const yPixel = yAxis.bottom + 10;
+                            const yPixel = yAxis.bottom + 10; // Increased spacing
                             ctx.fillText(dayPos.label, xPixel, yPixel);
                         });
                         
@@ -912,10 +920,10 @@
                     maintainAspectRatio: true,
                     layout: {
                         padding: {
-                            top: 10,
-                            right: 10,
+                            top: 5,
+                            right: 5,
                             bottom: 10,
-                            left: 10
+                            left: 5
                         }
                     },
                     scales: {
