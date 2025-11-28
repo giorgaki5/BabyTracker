@@ -417,7 +417,12 @@
             
             <div class="chart-container">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h2>Feed Durations by Day</h2>
+                    <div>
+                        <h2 style="display: inline-block; margin-right: 15px;">Feed Durations by Day</h2>
+                        <button id="feed-chart-back-btn" onclick="exitFeedDrilldown()" style="display: none; padding: 6px 12px; background: #6b7280; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
+                            ← Back to All Days
+                        </button>
+                    </div>
                     <span id="feed-avg-display" style="font-size: 18px; font-weight: bold; color: #ef4444;">Avg: -- min</span>
                 </div>
                 <canvas id="feedDurationByDayChart"></canvas>
@@ -732,9 +737,24 @@
             renderSummaryTable();
         }
         
+        // Feed chart drill-down state
+        let feedChartDrilledDate = null;
+        
+        function exitFeedDrilldown() {
+            feedChartDrilledDate = null;
+            document.getElementById('feed-chart-back-btn').style.display = 'none';
+            renderFeedDurationByDayChart();
+        }
+        
         function renderFeedDurationByDayChart() {
             const ctx = document.getElementById('feedDurationByDayChart');
             if (window.feedDurationByDayChartInstance) window.feedDurationByDayChartInstance.destroy();
+            
+            // Check if we're in drill-down mode
+            if (feedChartDrilledDate) {
+                renderFeedDrilldownChart(feedChartDrilledDate);
+                return;
+            }
             
             // Group feeds by day and create individual labels for each feed
             const feedsByDay = {};
@@ -763,6 +783,7 @@
             const data = [];
             const colors = [];
             const dayPositions = []; // Track where each day's bars are
+            const barToDayMap = []; // Map each bar index to its day
             
             let currentIndex = 0;
             sortedDays.forEach((day, dayIndex) => {
@@ -774,6 +795,7 @@
                     labels.push(''); // Empty labels, we'll draw custom ones
                     data.push(feed.duration);
                     colors.push(dayColor);
+                    barToDayMap.push(day); // Store which day this bar belongs to
                     currentIndex++;
                 });
                 
@@ -848,6 +870,15 @@
                             beginAtZero: true
                         }
                     },
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const barIndex = elements[0].index;
+                            const clickedDay = barToDayMap[barIndex];
+                            feedChartDrilledDate = clickedDay;
+                            document.getElementById('feed-chart-back-btn').style.display = 'inline-block';
+                            renderFeedDurationByDayChart();
+                        }
+                    },
                     plugins: {
                         legend: {
                             display: true,
@@ -888,6 +919,108 @@
                         ctx.restore();
                     }
                 }]
+            });
+        }
+        
+        function renderFeedDrilldownChart(selectedDate) {
+            const ctx = document.getElementById('feedDurationByDayChart');
+            
+            // Get feeds for the selected day
+            const dayFeeds = feeds
+                .filter(f => getDayKey(new Date(f.startTime)) === selectedDate)
+                .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+            
+            if (dayFeeds.length === 0) {
+                exitFeedDrilldown();
+                return;
+            }
+            
+            const labels = dayFeeds.map(f => formatTime(f.startTime));
+            const data = dayFeeds.map(f => f.duration);
+            
+            // Calculate average for this day
+            const dayAverage = data.reduce((a, b) => a + b, 0) / data.length;
+            const avgLine = new Array(data.length).fill(dayAverage);
+            
+            document.getElementById('feed-avg-display').textContent = 
+                `Avg: ${Math.round(dayAverage)} min`;
+            
+            window.feedDurationByDayChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Feed Duration',
+                        data: data,
+                        backgroundColor: '#3b82f6',
+                        borderColor: '#3b82f6',
+                        borderWidth: 1,
+                        order: 2
+                    }, {
+                        label: 'Average',
+                        data: avgLine,
+                        type: 'line',
+                        borderColor: '#ef4444',
+                        borderWidth: 3,
+                        borderDash: [5, 5],
+                        pointRadius: 0,
+                        fill: false,
+                        order: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    layout: {
+                        padding: {
+                            top: 5,
+                            right: 5,
+                            bottom: 5,
+                            left: 5
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            title: { 
+                                display: true, 
+                                text: formatDateShort(selectedDate),
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                }
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: { 
+                            title: { display: true, text: 'Duration (minutes)' },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.dataset.label === 'Average') {
+                                        return 'Average: ' + Math.round(context.parsed.y) + ' min';
+                                    }
+                                    const feed = dayFeeds[context.dataIndex];
+                                    return [
+                                        'Duration: ' + context.parsed.y + ' min',
+                                        'Start: ' + formatTime(feed.startTime),
+                                        'End: ' + formatTime(feed.endTime)
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
             });
         }
         
